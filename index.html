@@ -292,7 +292,7 @@ function esc(s){return String(s??'').replace(/[&<>'"]/g,m=>({'&':'&amp;','<':'&l
 function money(v){return v==null?'Preço sob consulta':new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v);}
 function hash(s){let h=0;for(let i=0;i<s.length;i++)h=((h<<5)-h)+s.charCodeAt(i)|0;return Math.abs(h);}
 function img(p){return p.image||('https://loremflickr.com/640/480/'+encodeURIComponent(p.tags||p.name)+'?lock='+hash(p.name));}
-const PAYMENT_LINK='https://link.mercadopago.com.br/construplast';
+const PAYMENT_API='https://construplastgithubio.vercel.app/api/create-preference';
 let cart=JSON.parse(localStorage.getItem('construplast_cart')||'[]');
 function saveCart(){localStorage.setItem('construplast_cart',JSON.stringify(cart));updateCart();}
 function addToCart(index){const p=PRODUCTS[index]; if(p.price==null)return; const item=cart.find(x=>x.name===p.name); if(item)item.qty++; else cart.push({name:p.name,price:p.price,qty:1}); saveCart();}
@@ -300,7 +300,35 @@ function addPromoToCart(name){const p=PRODUCTS.find(x=>x.name===name);if(!p||p.p
 function changeQty(name,delta){const item=cart.find(x=>x.name===name);if(!item)return;item.qty+=delta;if(item.qty<=0)cart=cart.filter(x=>x.name!==name);saveCart();}
 function updateCart(){const count=cart.reduce((a,x)=>a+x.qty,0);const total=cart.reduce((a,x)=>a+x.price*x.qty,0);document.getElementById('cartCount').textContent=count;document.getElementById('cartTotal').textContent=money(total);document.getElementById('checkoutBtn').disabled=cart.length===0;document.getElementById('cartItems').innerHTML=cart.length?cart.map(x=>`<div class="cart-item"><div><strong>${esc(x.name)}</strong><br><small>${money(x.price)} cada</small><div class="cart-controls"><button type="button" data-name="${esc(x.name)}" onclick="changeQty(this.dataset.name,-1)">−</button><b>${x.qty}</b><button type="button" data-name="${esc(x.name)}" onclick="changeQty(this.dataset.name,1)">+</button></div></div><strong>${money(x.price*x.qty)}</strong></div>`).join(''):'<div class="cart-empty">Seu carrinho está vazio.</div>';}
 function toggleCart(){document.getElementById('cartPanel').classList.toggle('active');updateCart();}
-function goToPayment(){if(!cart.length)return;window.open(PAYMENT_LINK,'_blank');}
+async function goToPayment(){
+  if(!cart.length)return;
+  const btn=document.getElementById('checkoutBtn');
+  const originalText=btn.textContent;
+  btn.disabled=true;
+  btn.textContent='Abrindo Mercado Pago...';
+  try{
+    const items=cart.map(x=>({
+      title:x.name,
+      quantity:Number(x.qty),
+      unit_price:Number(x.price)
+    }));
+    const response=await fetch(PAYMENT_API,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({items})
+    });
+    const data=await response.json();
+    if(!response.ok)throw new Error(data.error||'Não foi possível criar o pagamento.');
+    const paymentUrl=data.init_point||data.sandbox_init_point;
+    if(!paymentUrl)throw new Error('O Mercado Pago não retornou o endereço de pagamento.');
+    window.location.href=paymentUrl;
+  }catch(error){
+    console.error(error);
+    alert('Não foi possível abrir o Mercado Pago. Tente novamente.');
+    btn.disabled=false;
+    btn.textContent=originalText;
+  }
+}
 function renderProducts(){
  const q=searchEl.value.trim().toLowerCase(); const cat=categoryEl.value;
  const list=PRODUCTS.map((p,i)=>({...p,_index:i})).filter(p=>(!q||(p.name+' '+p.category).toLowerCase().includes(q))&&(!cat||p.category===cat));
